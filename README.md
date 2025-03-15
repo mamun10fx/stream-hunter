@@ -1,10 +1,10 @@
 # Stream Hunter
 
-Stream Hunter is a Bash script designed to download video and audio streams from `.m3u8` manifest URLs using `yt-dlp` and `ffmpeg`. It provides a user-friendly interface with colored output and progress bars for both video and audio downloads. The script also merges the downloaded video and audio files into a single `.mp4` file.
+Stream Hunter is a Bash script designed to download video and audio streams from `shikho.com` manifest or playlist URLs using `yt-dlp` and `ffmpeg`. It provides a user-friendly interface with colored output and progress bars for both video and audio downloads. The script also merges the downloaded video and audio files into a single `.mp4` file if the link have separated audio files.
 
 ## Features
-
-- **Download Video and Audio**: Downloads video and audio streams separately.
+- **Download videos directly**: If the video file doesn't have any separated audio files and it's already merged, it'll download the video without any conflict.
+- **Download Video and Audio**: Downloads video and audio streams separately if the audio file is separated and not merged.
 - **Progress Bars**: Displays real-time progress bars for video and audio downloads.
 - **Quality Selection**: Allows users to choose from low, mid, or high-quality streams.
 - **Automatic Merging**: Merges downloaded video and audio files into a single `.mp4` file.
@@ -44,7 +44,7 @@ Before using Stream Hunter, ensure you have the following tools installed:
 
 4. **Follow the Prompts**:
    - Enter the `.m3u8` manifest URL when prompted.
-   - Select the desired quality (1 for low, 2 for mid, 3 for high).
+   - Select the desired quality .
    - Enter the title for the output file. Use `/` to create subfolders (e.g., `folder_name/file_name`).
 
 5. **Output**:
@@ -57,7 +57,7 @@ $ ./bash.sh
 --------------------------------------------
            Stream Hunter
 --------------------------------------------
-Enter the manifest.m3u8 URL: https://example.com/manifest.m3u8
+Enter the URL: https://example.com/manifest.m3u8
 
 Fetching available formats...
 Available quality choices:
