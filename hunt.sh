@@ -2,6 +2,7 @@
 
 # Base folder where files will be saved
 base_folder="/storage/emulated/0/Stream Videos"
+
 # Utility functions for colored output
 print_banner() {
     echo -e "\e[1;34m--------------------------------------------\e[0m"
@@ -21,10 +22,6 @@ create_directory_if_not_exists() {
     local dir="$1"
     if [ ! -d "$dir" ]; then
         mkdir -p "$dir"
-        # Directory messages removed
-    else
-        :
-        # Directory messages removed
     fi
 }
 
@@ -69,14 +66,12 @@ download_file() {
     local type="$5"   # "video" or "audio"
     local total_estimated_mib="$6"   # Estimated total size in MiB (if available)
 
-    # Print header line (upper line)
     if [ "$type" == "video" ]; then
         echo -e "\e[1;36mDownloading video - ${file_id}\e[0m"
     else
         echo -e "\e[1;36mDownloading audio - ${file_id}\e[0m"
     fi
 
-    # Build and start ffmpeg in background (quiet logging)
     local ffmpeg_cmd=("ffmpeg" "-loglevel" "quiet" "-i" "$url")
     if [ -n "$bitrate" ]; then
         ffmpeg_cmd+=("-b" "$bitrate")
@@ -98,7 +93,6 @@ download_file() {
         speed_kib=$(awk "BEGIN {printf \"%.0f\", ($current_size/1024)/$elapsed}")
         downloaded_mib=$(awk "BEGIN {printf \"%.2f\", $current_size/1024/1024}")
 
-        # Handle video and audio progress differently
         if [ "$type" == "video" ]; then
             if [ -n "$total_estimated_mib" ] && [ "$total_estimated_mib" != "0" ]; then
                 total_bytes=$(awk "BEGIN {printf \"%d\", $total_estimated_mib*1024*1024}")
@@ -117,11 +111,10 @@ download_file() {
             progress_line=$(printf "\e[32m[%s%%]\e[0m \e[33m%sMiB\e[0m of ~\e[36m%sMiB\e[0m \e[35m%sKiB/s\e[0m ETA \e[31m%s\e[0m" \
                              "$percentage" "$downloaded_mib" "$total_estimated_mib" "$speed_kib" "$eta_formatted")
         else
-            # Simplified audio progress: Only show downloaded MiB
             progress_line=$(printf "\e[32m[Audio]\e[0m \e[33m%sMiB\e[0m downloaded" "$downloaded_mib")
         fi
         printf "\r%s" "$progress_line"
-        sleep 0.5  # Update every half second
+        sleep 0.5
     done
     wait "$ffmpeg_pid"
     printf "\n"
@@ -142,12 +135,10 @@ merge_files() {
          total_merge_mib="?"
     fi
 
-    echo -e "using ffmpeg for merging"
+    echo -e "Using ffmpeg for merging"
 
-    # Changed log level to 'error' to suppress logs
     local ffmpeg_cmd=("ffmpeg" "-loglevel" "error" "-i" "$video_file" "-i" "$audio_file" \
                       "-c:v" "copy" "-c:a" "copy" "-y" "$output_file")
-    
     "${ffmpeg_cmd[@]}" 2>/dev/null &
     local ffmpeg_pid=$!
 
@@ -177,111 +168,134 @@ merge_files() {
              eta_formatted="--:--"
          fi
          progress_line=$(printf "\e[32m[%s%%]\e[0m \e[33m%sMiB\e[0m of ~\e[36m%sMiB\e[0m \e[35m%sKiB/s\e[0m ETA \e[31m%s\e[0m" \
-                         "$percentage" "$downloaded_mib" "$total_merge_mib" "$speed_kib" "$eta_formatted")
+                             "$percentage" "$downloaded_mib" "$total_merge_mib" "$speed_kib" "$eta_formatted")
          printf "\r%s" "$progress_line"
-         sleep 0.5  # Update every half second
+         sleep 0.5
     done
     wait "$ffmpeg_pid"
     printf "\n"
-
 }
 
+########################################
 # Main function
+########################################
 main() {
     print_banner
-    print_prompt "Enter the manifest.m3u8 URL: "
+    print_prompt "Enter the manifest/playlist URL: "
     read manifest_url
 
     print_success "\nFetching available formats..."
     formats_output=$(yt-dlp --no-warnings -F "$manifest_url")
-    
-    # Extract audio and video lines from the formats output.
+
+    # Extract audio and video lines.
     audio_lines=$(echo "$formats_output" | grep "audio_track")
     video_lines=$(echo "$formats_output" | grep -E '^[0-9]')
 
-    # Ensure there are at least three audio and video formats.
     audio_count=$(echo "$audio_lines" | wc -l)
     video_count=$(echo "$video_lines" | wc -l)
-    if [ "$audio_count" -lt 3 ] || [ "$video_count" -lt 3 ]; then
-        print_error "Not enough audio or video formats found."
+
+    if [ "$video_count" -eq 0 ]; then
+        print_error "No video formats found."
         exit 1
     fi
 
-    # For audio, assign by order: first = low, second = mid, third = best.
-    audio_low=$(echo "$audio_lines" | sed -n '1p' | awk '{print $1}')
-    audio_mid=$(echo "$audio_lines" | sed -n '2p' | awk '{print $1}')
-    audio_best=$(echo "$audio_lines" | sed -n '3p' | awk '{print $1}')
-
-    # For video, sort by filesize (extracted from the field containing ~...MiB)
+    # Build a custom quality–choice table.
+    # Use yt-dlp -F output; assume format: format_code, container, resolution, filesize, TBR, proto, etc.
     sorted_video=$(echo "$video_lines" | awk '{
-        size = 0;
+        size=0; fs=""; tbr=""; proto="";
         for(i=1;i<=NF;i++){
-            if ($i ~ /^~/) {
-                s = $i;
-                gsub(/~/,"",s);
-                gsub(/MiB/,"",s);
-                size = s + 0;
-                break;
+            if($i ~ /^~/){
+                fs=$i;
+                s=fs; gsub(/~/,"",s); gsub(/MiB/,"",s); size=s+0;
+            }
+            if($i ~ /^[0-9]+k$/){
+                tbr=$i;
+            }
+            if($i ~ /^(m3u8|mp4)$/){
+                proto=$i;
             }
         }
-        print $1, $3, size;
-    }' | sort -k3,3n)
+        # Assume resolution is in field 3.
+        print $1, $3, fs, tbr, proto, size;
+    }' | sort -k6,6n)
 
-    video_low_line=$(echo "$sorted_video" | sed -n '1p')
-    video_mid_line=$(echo "$sorted_video" | sed -n '2p')
-    video_best_line=$(echo "$sorted_video" | sed -n '3p')
+    # Extract first three choices.
+    choice1=$(echo "$sorted_video" | sed -n '1p')
+    choice2=$(echo "$sorted_video" | sed -n '2p')
+    choice3=$(echo "$sorted_video" | sed -n '3p')
 
-    video_low=$(echo "$video_low_line" | awk '{print $1}')
-    video_low_res=$(echo "$video_low_line" | awk '{print $2}')
-    video_mid=$(echo "$video_mid_line" | awk '{print $1}')
-    video_mid_res=$(echo "$video_mid_line" | awk '{print $2}')
-    video_best=$(echo "$video_best_line" | awk '{print $1}')
-    video_best_res=$(echo "$video_best_line" | awk '{print $2}')
+    # Function to print one table row.
+    print_row() {
+        # Arguments: choice number, line data.
+        local num="$1"
+        local line="$2"
+        local fmt res fs tbr proto numsize
+        fmt=$(echo "$line" | awk '{print $1}')
+        res=$(echo "$line" | awk '{print $2}')
+        fs=$(echo "$line" | awk '{print $3}')
+        tbr=$(echo "$line" | awk '{print $4}')
+        proto=$(echo "$line" | awk '{print $5}')
+        numsize=$(echo "$line" | awk '{print $6}')
+        # Compute resolution label from resolution (e.g. "640x360" gives "360p")
+        local height label
+        height=$(echo "$res" | cut -d'x' -f2)
+        label="${height}p"
+        # Print row: choice number, label, resolution, FILESIZE, TBR, PROTO, with proper spacing.
+        printf "\e[1;36m%s)%-7s %-10s │ %-14s %-8s %-8s|\e[0m\n" "$num" "$label" "$res" "$fs" "$tbr" "$proto"
+    }
 
-    # Extract estimated size (in MiB) for video formats.
-    video_low_size=$(echo "$video_low_line" | awk '{print $3}')
-    video_mid_size=$(echo "$video_mid_line" | awk '{print $3}')
-    video_best_size=$(echo "$video_best_line" | awk '{print $3}')
+    echo ""
+    # Display header based on whether separated audio exists.
+    if [ "$audio_count" -gt 0 ] && [ "$audio_count" -eq "$video_count" ]; then
+        echo -e "(have separated audio files)"
+        balanced=1
+    else
+        echo -e "(doesn't have separated audio files)"
+        balanced=0
+    fi
 
-    echo -e "\nAvailable quality choices:"
-    echo -e "\e[1;36m1) Low  - ${video_low_res} + ${audio_low}\e[0m"
-    echo -e "\e[1;36m2) Mid  - ${video_mid_res} + ${audio_mid}\e[0m"
-    echo -e "\e[1;36m3) Best - ${video_best_res} + ${audio_best}\e[0m"
+    echo -e "Available quality choices:"
+    echo -e "RESOLUTION           │ FILESIZE       TBR      PROTO   |"
+    echo -e "───────────────────────────────────────────────────────"
+
+    print_row 1 "$choice1"
+    print_row 2 "$choice2"
+    print_row 3 "$choice3"
 
     print_prompt "Select the desired quality (1/2/3): "
     read quality_choice
 
     case $quality_choice in
-        1)
-            video_format_id="$video_low"
-            audio_format_id="$audio_low"
-            video_estimated_size="$video_low_size"
-            ;;
-        2)
-            video_format_id="$video_mid"
-            audio_format_id="$audio_mid"
-            video_estimated_size="$video_mid_size"
-            ;;
-        3)
-            video_format_id="$video_best"
-            audio_format_id="$audio_best"
-            video_estimated_size="$video_best_size"
-            ;;
-        *)
-            print_error "Invalid selection. Exiting..."
-            exit 1
-            ;;
+        1) chosen_line="$choice1" ;;
+        2) chosen_line="$choice2" ;;
+        3) chosen_line="$choice3" ;;
+        *) print_error "Invalid selection." ; exit 1 ;;
     esac
+
+    video_format_id=$(echo "$chosen_line" | awk '{print $1}')
+    video_estimated_size=$(echo "$chosen_line" | awk '{print $6}')
+
+    # For balanced mode, pick corresponding audio; else if audio exists, pick first.
+    if [ "$balanced" -eq 1 ]; then
+        audio_format_id=$(echo "$audio_lines" | sed -n "${quality_choice}p" | awk '{print $1}')
+    else
+        if [ "$audio_count" -gt 0 ]; then
+            audio_format_id=$(echo "$audio_lines" | sed -n '1p' | awk '{print $1}')
+        else
+            audio_format_id=""
+        fi
+    fi
 
     print_success "\nFetching direct URLs for selected formats..."
     video_url=$(yt-dlp --no-warnings -f "$video_format_id" -g "$manifest_url")
-    audio_url=$(yt-dlp --no-warnings -f "$audio_format_id" -g "$manifest_url")
+    if [ -n "$audio_format_id" ]; then
+        audio_url=$(yt-dlp --no-warnings -f "$audio_format_id" -g "$manifest_url")
+    fi
 
     print_prompt "\nEnter the title for the output file (if it contains '/', that will be used as folder structure): "
     read input_title
     output_filepath=$(process_title "$input_title")
-    
-    # Use a temporary folder for downloads.
+
     temp_dir="$base_folder/.temp"
     create_directory_if_not_exists "$temp_dir" >&2
     temp_video="$temp_dir/temp_video.ts"
@@ -291,24 +305,31 @@ main() {
     download_file "$video_url" "$temp_video" "" "$video_format_id" "video" "$video_estimated_size"
     print_success "\nVideo downloaded successfully."
 
-    echo ""
-    download_file "$audio_url" "$temp_audio" "" "$audio_format_id" "audio" ""
-    print_success "\nAudio downloaded successfully."
+    if [ -n "$audio_url" ]; then
+        echo ""
+        download_file "$audio_url" "$temp_audio" "" "$audio_format_id" "audio" ""
+        print_success "\nAudio downloaded successfully."
 
-    echo ""
-    print_prompt "Merging video and audio files...\n"
-    merge_files "$temp_video" "$temp_audio" "$temp_dir/merged.mp4"
+        echo ""
+        print_prompt "Merging video and audio files...\n"
+        merge_files "$temp_video" "$temp_audio" "$temp_dir/merged.mp4"
 
-    mv "$temp_dir/merged.mp4" "$output_filepath"
-    if [ $? -eq 0 ]; then
-        print_success "\nFile saved to: $output_filepath"
+        mv "$temp_dir/merged.mp4" "$output_filepath"
+        if [ $? -eq 0 ]; then
+            print_success "\nFile saved to: $output_filepath"
+        else
+            print_error "\nFailed to move merged file."
+        fi
     else
-        print_error "\nFailed to move merged file."
+        mv "$temp_video" "$output_filepath"
+        if [ $? -eq 0 ]; then
+            print_success "\nFile saved to: $output_filepath"
+        else
+            print_error "\nFailed to move downloaded file."
+        fi
     fi
 
-    # Clean up temporary files
     rm -f "$temp_video" "$temp_audio"
 }
 
-# Run the main function
 main
