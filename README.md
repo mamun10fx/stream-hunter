@@ -28,26 +28,29 @@ Before using Stream Hunter, ensure you have the following tools installed:
    ```
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/your-username/stream-hunter.git
+   git clone https://github.com/mamun10fx/stream-hunter.git
    cd stream-hunter
    ```
 
 2. **Make the Script Executable**:
    ```bash
-   chmod +x bash.sh
+   chmod +x hunt.sh
    ```
 
 3. **Run the Script**:
    ```bash
-   ./bash.sh
+   ./hunt.sh
    ```
-
-4. **Follow the Prompts**:
-   - Enter the `.m3u8` manifest URL when prompted.
+   or
+   ```bash
+   bash hunt.sh
+   ```
+5. **Follow the Prompts**:
+   - Enter the `.m3u8` URL when prompted.
    - Select the desired quality .
    - Enter the title for the output file. Use `/` to create subfolders (e.g., `folder_name/file_name`).
 
-5. **Output**:
+6. **Output**:
    - The script will download the video and audio streams, merge them, and save the final file in the specified location.
 
 ## Example
