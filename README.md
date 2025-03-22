@@ -23,7 +23,8 @@ Before using Stream Hunter, ensure you have the following tools installed:
 
 **requirements**:
    ```bash
-   apt install ffmpeg
+   apt update && apt upgrade -y
+   apt install ffmpeg -y
    pip install yt-dlp
    ```
 1. **Clone the Repository**:
